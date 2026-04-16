@@ -262,7 +262,12 @@ export async function connectAndLoadSession(
       if (!shouldFallbackToNewSession(error, record)) {
         throw error;
       }
-      const createdSession = await withTimeout(client.createSession(record.cwd), options.timeoutMs);
+      // Pass acpSessionId as proposedSessionId so the UUID stays stable when
+      // falling back from session/load to session/new.
+      const createdSession = await withTimeout(
+        client.createSession(record.cwd, { proposedSessionId: record.acpSessionId }),
+        options.timeoutMs,
+      );
       sessionId = createdSession.sessionId;
       createdFreshSession = true;
       pendingAgentSessionId = createdSession.agentSessionId;
@@ -275,7 +280,12 @@ export async function connectAndLoadSession(
         reason: "agent does not support session/load",
       });
     }
-    const createdSession = await withTimeout(client.createSession(record.cwd), options.timeoutMs);
+    // Pass acpSessionId as proposedSessionId so the UUID stays stable when
+    // the agent does not support session/load.
+    const createdSession = await withTimeout(
+      client.createSession(record.cwd, { proposedSessionId: record.acpSessionId }),
+      options.timeoutMs,
+    );
     sessionId = createdSession.sessionId;
     createdFreshSession = true;
     pendingAgentSessionId = createdSession.agentSessionId;

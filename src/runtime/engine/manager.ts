@@ -254,6 +254,25 @@ export class AcpRuntimeManager {
       return existing;
     }
 
+    // For oneshot sessions with a resumeSessionId, skip client.start() + loadSession entirely.
+    // Running start+loadSession+close writes a closed/interrupted marker to the JSONL, which
+    // causes connectAndLoadSession (phase 2) to fail when it tries to resume the session.
+    // Instead, save a minimal record with the resume UUID and return early.
+    // Phase 2 handles the actual session/load on its own.
+    if (input.mode === "oneshot" && input.resumeSessionId) {
+      const resumeUUID = input.resumeSessionId.split(":").pop()!;
+      const record = createInitialRecord({
+        recordId: createRecordId(input.sessionKey, input.mode),
+        sessionName: input.sessionKey,
+        sessionId: resumeUUID,
+        agentCommand,
+        cwd,
+        agentSessionId: undefined,
+      });
+      await this.options.sessionStore.save(record);
+      return record;
+    }
+
     const client = this.createClient({
       agentCommand,
       cwd,
@@ -273,7 +292,10 @@ export class AcpRuntimeManager {
         sessionId = input.resumeSessionId;
         agentSessionId = loaded.agentSessionId;
       } else {
-        const created = await client.createSession(cwd);
+        // Pass sessionKey UUID as proposedSessionId so Claude Code uses the same UUID
+        // as OpenClaw's childSessionKey, making session files predictable and resumable.
+        const sessionKeyUUID = input.sessionKey.split(":").pop()!;
+        const created = await client.createSession(cwd, { proposedSessionId: sessionKeyUUID });
         sessionId = created.sessionId;
         agentSessionId = created.agentSessionId;
       }

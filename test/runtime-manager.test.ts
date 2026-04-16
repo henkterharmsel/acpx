@@ -20,7 +20,10 @@ type FakeClient = {
   };
   start: () => Promise<void>;
   close: () => Promise<void>;
-  createSession: (cwd: string) => Promise<{ sessionId: string; agentSessionId?: string }>;
+  createSession: (
+    cwd: string,
+    hints?: { proposedSessionId?: string },
+  ) => Promise<{ sessionId: string; agentSessionId?: string }>;
   loadSession: (sessionId: string, cwd: string) => Promise<{ agentSessionId?: string }>;
   hasReusableSession: (sessionId: string) => boolean;
   supportsLoadSession: () => boolean;
@@ -1331,4 +1334,95 @@ test("AcpRuntimeManager falls back when a kept-open persistent client is no long
   assert.equal(firstClientPromptCalls, 0);
   assert.equal(secondClientPromptCalls, 1);
   assert.equal(constructed, 2);
+});
+
+test("AcpRuntimeManager passes proposedSessionId derived from session key when creating a new session", async () => {
+  const store = new InMemorySessionStore();
+  let capturedHints: { proposedSessionId?: string } | undefined;
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          initializeResult: { protocolVersion: 1, agentCapabilities: {} },
+          start: async () => {},
+          close: async () => {},
+          createSession: async (_cwd: string, hints?: { proposedSessionId?: string }) => {
+            capturedHints = hints;
+            return { sessionId: "new-session", agentSessionId: "agent-session" };
+          },
+          loadSession: async () => ({ agentSessionId: "unused" }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          loadSessionWithOptions: async () => ({ agentSessionId: "unused" }),
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          prompt: async () => ({ stopReason: "end_turn" }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async () => {},
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  await manager.ensureSession({
+    sessionKey: "agent:claude:acp:33333333-3333-3333-3333-333333333333",
+    agent: "codex",
+    mode: "persistent",
+    cwd: "/workspace",
+  });
+
+  assert.deepEqual(capturedHints, {
+    proposedSessionId: "33333333-3333-3333-3333-333333333333",
+  });
+});
+
+test("AcpRuntimeManager does not start a Claude process for oneshot resume", async () => {
+  const store = new InMemorySessionStore();
+  let startCalls = 0;
+  let loadSessionCalls = 0;
+  const resumeUUID = "44444444-4444-4444-4444-444444444444";
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/tmp", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          initializeResult: { protocolVersion: 1, agentCapabilities: {} },
+          start: async () => {
+            startCalls += 1;
+          },
+          close: async () => {},
+          createSession: async () => ({ sessionId: "unused", agentSessionId: "unused" }),
+          loadSession: async () => {
+            loadSessionCalls += 1;
+            return { agentSessionId: "unused" };
+          },
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          loadSessionWithOptions: async () => ({ agentSessionId: "unused" }),
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          prompt: async () => ({ stopReason: "end_turn" }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async () => {},
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  const record = await manager.ensureSession({
+    sessionKey: `agent:claude:acp:${resumeUUID}`,
+    agent: "codex",
+    mode: "oneshot",
+    resumeSessionId: resumeUUID,
+    cwd: "/tmp",
+  });
+
+  assert.equal(startCalls, 0);
+  assert.equal(loadSessionCalls, 0);
+  assert.equal(record.acpSessionId, resumeUUID);
 });
