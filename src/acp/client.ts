@@ -622,10 +622,30 @@ export class AcpClient {
     return { readable, writable };
   }
 
-  async createSession(cwd = this.options.cwd): Promise<SessionCreateResult> {
+  async createSession(
+    cwd = this.options.cwd,
+    hints?: { proposedSessionId?: string },
+  ): Promise<SessionCreateResult> {
     const connection = this.getConnection();
     const { command, args } = splitCommandLine(this.options.agentCommand);
     const claudeAcp = isClaudeAcpCommand(command, args);
+
+    let sessionMeta = buildClaudeCodeOptionsMeta(this.options.sessionOptions);
+    if (hints?.proposedSessionId) {
+      sessionMeta = sessionMeta ?? {};
+      sessionMeta = {
+        ...sessionMeta,
+        claudeCode: {
+          ...(sessionMeta.claudeCode as Record<string, unknown> | undefined),
+          options: {
+            ...((sessionMeta.claudeCode as Record<string, unknown> | undefined)?.options as
+              | Record<string, unknown>
+              | undefined),
+            proposedSessionId: hints.proposedSessionId,
+          },
+        },
+      };
+    }
 
     let result: Awaited<ReturnType<typeof connection.newSession>>;
     try {
@@ -633,7 +653,7 @@ export class AcpClient {
         connection.newSession({
           cwd: asAbsoluteCwd(cwd),
           mcpServers: this.options.mcpServers ?? [],
-          _meta: buildClaudeCodeOptionsMeta(this.options.sessionOptions),
+          _meta: sessionMeta,
         }),
       );
       result = claudeAcp

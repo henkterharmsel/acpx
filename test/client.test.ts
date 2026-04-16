@@ -455,6 +455,72 @@ test("AcpClient createSession forwards codex model metadata without setting it e
   assert.equal(setConfigCalled, false);
 });
 
+test("AcpClient createSession includes proposedSessionId in _meta when provided via hints", async () => {
+  const proposedId = "22222222-2222-2222-2222-222222222222";
+  const client = makeClient({
+    sessionOptions: { model: "sonnet" },
+  });
+
+  let capturedParams: Record<string, unknown> | undefined;
+  asInternals(client).connection = {
+    newSession: async (params: Record<string, unknown>) => {
+      capturedParams = params;
+      return { sessionId: "session-hints" };
+    },
+  };
+
+  const result = await client.createSession("/tmp/acpx-hints", { proposedSessionId: proposedId });
+  assert.equal(result.sessionId, "session-hints");
+  assert.deepEqual(capturedParams, {
+    cwd: "/tmp/acpx-hints",
+    mcpServers: [],
+    _meta: {
+      claudeCode: {
+        options: {
+          model: "sonnet",
+          proposedSessionId: proposedId,
+        },
+      },
+    },
+  });
+});
+
+test("AcpClient createSession does not include proposedSessionId in _meta when hints are absent", async () => {
+  const client = makeClient({
+    sessionOptions: { model: "sonnet" },
+  });
+
+  let capturedParams: Record<string, unknown> | undefined;
+  asInternals(client).connection = {
+    newSession: async (params: Record<string, unknown>) => {
+      capturedParams = params;
+      return { sessionId: "session-no-hints" };
+    },
+  };
+
+  const result = await client.createSession("/tmp/acpx-no-hints");
+  assert.equal(result.sessionId, "session-no-hints");
+  assert.deepEqual(capturedParams, {
+    cwd: "/tmp/acpx-no-hints",
+    mcpServers: [],
+    _meta: {
+      claudeCode: {
+        options: {
+          model: "sonnet",
+        },
+      },
+    },
+  });
+  // proposedSessionId must not appear anywhere in the captured params
+  const metaOptions = (capturedParams?._meta as Record<string, unknown> | undefined)?.claudeCode as
+    | Record<string, unknown>
+    | undefined;
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(metaOptions?.options, "proposedSessionId"),
+    false,
+  );
+});
+
 test("AcpClient setSessionModel uses session/set_model", async () => {
   const client = makeClient();
 
