@@ -273,6 +273,26 @@ export class AcpRuntimeManager {
       return record;
     }
 
+    // For oneshot second turns arriving without an explicit resumeSessionId (e.g. a follow-up
+    // message via dispatch-acp after a completed turn), the caller does not know to pass
+    // resumeSessionId because persistedResumeSessionId is undefined in oneshot mode.
+    // The normal path would call createSession(cwd, { proposedSessionId: UUID }) but the JSONL
+    // already exists from the first turn, causing Claude Code to fail with a session-init error.
+    // Fix: if the existing record has an acpSessionId (set during the first turn), use it as an
+    // implicit resume — same early-return pattern as above, without requiring an explicit hint.
+    if (input.mode === "oneshot" && !input.resumeSessionId && existing?.acpSessionId) {
+      const record = createInitialRecord({
+        recordId: createRecordId(input.sessionKey, input.mode),
+        sessionName: input.sessionKey,
+        sessionId: existing.acpSessionId,
+        agentCommand,
+        cwd,
+        agentSessionId: undefined,
+      });
+      await this.options.sessionStore.save(record);
+      return record;
+    }
+
     const client = this.createClient({
       agentCommand,
       cwd,
