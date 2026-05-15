@@ -31,6 +31,7 @@ Repo: https://github.com/openclaw/acpx
 - Docs/auth: document the supported `authPolicy` values and ACP credential selection behavior.
 - Docs/skills: make the quick setup skill-install command noninteractive and route unsupported harnesses to the reference URL.
 - CLI/queue: honor per-request `--prompt-retries` when sending a prompt to an already-warm persistent queue owner.
+- Runtime/embedding: reject unsupported advertised config option keys before forwarding them to adapters, and map generic `thinking` controls to advertised `effort` options when available. (#293)
 
 ## 2026.5.5 (v0.7.0)
 

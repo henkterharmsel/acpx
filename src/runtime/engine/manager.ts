@@ -62,6 +62,13 @@ type ActiveSessionController = {
     configId: string,
     value: string,
   ) => ReturnType<AcpClient["setSessionConfigOption"]>;
+  setResolvedSessionConfigOption: (
+    configId: string,
+    value: string,
+  ) => Promise<{
+    configId: string;
+    response: Awaited<ReturnType<AcpClient["setSessionConfigOption"]>>;
+  }>;
 };
 
 type Deferred<T> = {
@@ -262,6 +269,41 @@ function buildModelsField(record: SessionRecord): { models?: AcpRuntimeSessionMo
       availableModelIds: [...available],
     },
   };
+}
+
+function advertisedConfigOptionIds(record: SessionRecord): Set<string> | undefined {
+  const configOptions = record.acpx?.config_options;
+  if (!configOptions) {
+    return undefined;
+  }
+
+  return new Set(
+    configOptions
+      .map((option) => option.id)
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0),
+  );
+}
+
+function resolveSupportedConfigOptionId(record: SessionRecord, configId: string): string {
+  const advertisedIds = advertisedConfigOptionIds(record);
+  if (!advertisedIds) {
+    return configId;
+  }
+
+  if (advertisedIds.has(configId)) {
+    return configId;
+  }
+
+  if (configId === "thinking" && advertisedIds.has("effort")) {
+    return "effort";
+  }
+
+  const supported = [...advertisedIds].toSorted();
+  const supportedText = supported.length > 0 ? supported.join(", ") : "none";
+  throw new AcpRuntimeError(
+    "ACP_BACKEND_UNSUPPORTED_CONTROL",
+    `ACP session ${record.acpxRecordId} does not advertise config option '${configId}'. Supported config options: ${supportedText}.`,
+  );
 }
 
 export class AcpRuntimeManager {
@@ -634,12 +676,23 @@ export class AcpRuntimeManager {
             await runtimeClient.setSessionModel(activeSessionId, modelId);
           },
           setSessionConfigOption: async (configId: string, value: string) => {
+            const result = await activeController!.setResolvedSessionConfigOption(configId, value);
+            return result.response;
+          },
+          setResolvedSessionConfigOption: async (configId: string, value: string) => {
             if (!runtimeClient.hasActivePrompt()) {
               await sessionReady.promise;
             }
+            const resolvedConfigId = resolveSupportedConfigOptionId(
+              {
+                ...runtimeRecord,
+                acpx: acpxState ?? undefined,
+              },
+              configId,
+            );
             const response = await runtimeClient.setSessionConfigOption(
               activeSessionId,
-              configId,
+              resolvedConfigId,
               value,
             );
             if (response?.configOptions) {
@@ -647,19 +700,19 @@ export class AcpRuntimeManager {
               nextState.config_options = structuredClone(response.configOptions);
               acpxState = nextState;
             }
-            if (configId === "mode") {
+            if (resolvedConfigId === "mode") {
               const nextState = cloneSessionAcpxState(acpxState) ?? {};
               nextState.desired_mode_id = value;
               acpxState = nextState;
-            } else if (configId !== "model") {
+            } else if (resolvedConfigId !== "model") {
               const nextState = cloneSessionAcpxState(acpxState) ?? {};
               nextState.desired_config_options = {
                 ...nextState.desired_config_options,
-                [configId]: value,
+                [resolvedConfigId]: value,
               };
               acpxState = nextState;
             }
-            return response;
+            return { configId: resolvedConfigId, response };
           },
         };
 
@@ -709,9 +762,10 @@ export class AcpRuntimeManager {
               resumePolicy: resumePolicyForSessionMode(input.sessionMode),
               timeoutMs: this.options.timeoutMs,
               activeController,
-              onClientAvailable: (controller) => {
-                activeController = controller;
-                this.activeControllers.set(runtimeRecord.acpxRecordId, controller);
+              onClientAvailable: () => {
+                if (activeController) {
+                  this.activeControllers.set(runtimeRecord.acpxRecordId, activeController);
+                }
               },
               onConnectedRecord: (connectedRecord) => {
                 connectedRecord.lastPromptAt = isoNow();
@@ -720,6 +774,7 @@ export class AcpRuntimeManager {
                 activeSessionId = sessionIdValue;
               },
             });
+        acpxState = cloneSessionAcpxState(runtimeRecord.acpx);
         sessionReady.resolve();
         runtimeRecord.lastRequestId = input.requestId;
         runtimeRecord.lastPromptAt = isoNow();
@@ -890,32 +945,33 @@ export class AcpRuntimeManager {
   ): Promise<void> {
     const record = await this.requireRecord(handle.acpxRecordId ?? handle.sessionKey);
     const controller = this.activeControllers.get(record.acpxRecordId);
-    let targetRecord = record;
     if (controller) {
-      const response = await controller.setSessionConfigOption(key, value);
-      applyConfigOptionsToRecord(targetRecord, response);
-    } else {
-      const result = await this.withRuntimeControlSession(
-        record,
-        sessionMode,
-        async ({ client, sessionId, record: connectedRecord }) => {
-          const response = await client.setSessionConfigOption(sessionId, key, value);
-          applyConfigOptionsToRecord(connectedRecord, response);
-          if (key === "mode") {
-            setDesiredModeId(connectedRecord, value);
-          } else {
-            setDesiredConfigOption(connectedRecord, key, value);
-          }
-        },
-      );
-      targetRecord = result.record;
+      const { configId, response } = await controller.setResolvedSessionConfigOption(key, value);
+      applyConfigOptionsToRecord(record, response);
+      if (configId === "mode") {
+        setDesiredModeId(record, value);
+      } else {
+        setDesiredConfigOption(record, configId, value);
+      }
+      await this.options.sessionStore.save(record);
+      return;
     }
-    if (key === "mode") {
-      setDesiredModeId(targetRecord, value);
-    } else {
-      setDesiredConfigOption(targetRecord, key, value);
-    }
-    await this.options.sessionStore.save(targetRecord);
+
+    const result = await this.withRuntimeControlSession(
+      record,
+      sessionMode,
+      async ({ client, sessionId, record: connectedRecord }) => {
+        const configId = resolveSupportedConfigOptionId(connectedRecord, key);
+        const response = await client.setSessionConfigOption(sessionId, configId, value);
+        applyConfigOptionsToRecord(connectedRecord, response);
+        if (configId === "mode") {
+          setDesiredModeId(connectedRecord, value);
+        } else {
+          setDesiredConfigOption(connectedRecord, configId, value);
+        }
+      },
+    );
+    await this.options.sessionStore.save(result.record);
   }
 
   async cancel(handle: AcpRuntimeHandle): Promise<void> {

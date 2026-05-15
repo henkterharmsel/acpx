@@ -1153,6 +1153,379 @@ test("AcpRuntimeManager routes controls through the active controller while a tu
   assert.equal(handlers.onSessionUpdate, undefined);
 });
 
+test("AcpRuntimeManager rejects unsupported advertised config option keys after refresh", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "config-key-session",
+    acpSessionId: "config-key-backend-session",
+    agentCommand: "claude --acp",
+    cwd: "/workspace",
+    acpx: {
+      config_options: [
+        {
+          id: "effort",
+          name: "Effort",
+          type: "select",
+          currentValue: "medium",
+          options: [{ value: "medium", name: "Medium" }],
+        },
+      ],
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  let setConfigCalls = 0;
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {},
+          close: async () => {},
+          createSession: async () => ({ sessionId: "unused" }),
+          loadSession: async () => ({
+            configOptions: [
+              {
+                id: "effort",
+                name: "Effort",
+                type: "select",
+                currentValue: "medium",
+                options: [{ value: "medium", name: "Medium" }],
+              },
+            ],
+          }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          loadSessionWithOptions: async () => ({
+            configOptions: [
+              {
+                id: "effort",
+                name: "Effort",
+                type: "select",
+                currentValue: "medium",
+                options: [{ value: "medium", name: "Medium" }],
+              },
+            ],
+          }),
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          prompt: async () => ({ stopReason: "end_turn" }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async () => {
+            setConfigCalls += 1;
+            throw new Error("unsupported config keys should not reach the adapter");
+          },
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  await assert.rejects(
+    async () =>
+      await manager.setConfigOption(createHandle("config-key-session"), "timeoutSeconds", "180"),
+    /does not advertise config option 'timeoutSeconds'.*Supported config options: effort/,
+  );
+  assert.equal(setConfigCalls, 0);
+});
+
+test("AcpRuntimeManager maps generic thinking config to refreshed advertised effort key", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "thinking-alias-session",
+    acpSessionId: "thinking-alias-backend-session",
+    agentCommand: "claude --acp",
+    cwd: "/workspace",
+    acpx: {
+      config_options: [
+        {
+          id: "mode",
+          name: "Mode",
+          type: "select",
+          currentValue: "ask",
+          options: [{ value: "ask", name: "Ask" }],
+        },
+      ],
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  const setConfigCalls: Array<{ sessionId: string; key: string; value: string }> = [];
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {},
+          close: async () => {},
+          createSession: async () => ({ sessionId: "unused" }),
+          loadSession: async () => ({ agentSessionId: "unused" }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          loadSessionWithOptions: async () => ({
+            agentSessionId: "unused",
+            configOptions: [
+              {
+                id: "effort",
+                name: "Effort",
+                type: "select",
+                currentValue: "medium",
+                options: [{ value: "high", name: "High" }],
+              },
+            ],
+          }),
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          prompt: async () => ({ stopReason: "end_turn" }),
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async (sessionId: string, key: string, value: string) => {
+            setConfigCalls.push({ sessionId, key, value });
+            return {
+              configOptions: [
+                {
+                  id: "effort",
+                  name: "Effort",
+                  type: "select",
+                  currentValue: value,
+                  options: [{ value, name: "High" }],
+                },
+              ],
+            };
+          },
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  await manager.setConfigOption(createHandle("thinking-alias-session"), "thinking", "high");
+
+  assert.deepEqual(setConfigCalls, [
+    {
+      sessionId: "thinking-alias-backend-session",
+      key: "effort",
+      value: "high",
+    },
+  ]);
+  const stored = await store.load("thinking-alias-session");
+  assert.deepEqual(stored?.acpx?.desired_config_options, { effort: "high" });
+});
+
+test("AcpRuntimeManager maps active generic thinking config against live advertised effort key", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "active-thinking-alias-session",
+    acpSessionId: "active-thinking-alias-backend-session",
+    agentCommand: "claude --acp",
+    cwd: "/workspace",
+    acpx: {
+      config_options: [
+        {
+          id: "mode",
+          name: "Mode",
+          type: "select",
+          currentValue: "ask",
+          options: [{ value: "ask", name: "Ask" }],
+        },
+      ],
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  const setConfigCalls: Array<{ sessionId: string; key: string; value: string }> = [];
+  let resolvePromptStart!: () => void;
+  let resolvePrompt!: (value: { stopReason: string }) => void;
+  const promptStarted = new Promise<void>((resolve) => {
+    resolvePromptStart = resolve;
+  });
+  const promptResult = new Promise<{ stopReason: string }>((resolve) => {
+    resolvePrompt = resolve;
+  });
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {},
+          close: async () => {},
+          createSession: async () => ({ sessionId: "unused" }),
+          loadSession: async () => ({ agentSessionId: "unused" }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          loadSessionWithOptions: async () => ({
+            agentSessionId: "unused",
+            configOptions: [
+              {
+                id: "effort",
+                name: "Effort",
+                type: "select",
+                currentValue: "medium",
+                options: [{ value: "high", name: "High" }],
+              },
+            ],
+          }),
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          prompt: async () => {
+            resolvePromptStart();
+            return await promptResult;
+          },
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => true,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async (sessionId: string, key: string, value: string) => {
+            setConfigCalls.push({ sessionId, key, value });
+            return {
+              configOptions: [
+                {
+                  id: "effort",
+                  name: "Effort",
+                  type: "select",
+                  currentValue: value,
+                  options: [{ value, name: "High" }],
+                },
+              ],
+            };
+          },
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  const handle = createHandle("active-thinking-alias-session");
+  const turn = manager.startTurn({
+    handle,
+    text: "hello",
+    mode: "prompt",
+    sessionMode: "persistent",
+    requestId: "req-active-thinking-alias",
+  });
+  const eventsPromise = collectEvents(turn.events);
+  await promptStarted;
+  await manager.setConfigOption(handle, "thinking", "high");
+  resolvePrompt({ stopReason: "end_turn" });
+  const result = await turn.result;
+  const events = await eventsPromise;
+
+  assert.deepEqual(setConfigCalls, [
+    {
+      sessionId: "active-thinking-alias-backend-session",
+      key: "effort",
+      value: "high",
+    },
+  ]);
+  assert.deepEqual(result, { status: "completed", stopReason: "end_turn" });
+  assert.deepEqual(events, []);
+});
+
+test("AcpRuntimeManager waits for active load refresh before resolving generic config keys", async () => {
+  const record = makeSessionRecord({
+    acpxRecordId: "loading-thinking-alias-session",
+    acpSessionId: "loading-thinking-alias-backend-session",
+    agentCommand: "claude --acp",
+    cwd: "/workspace",
+    acpx: {
+      config_options: [
+        {
+          id: "mode",
+          name: "Mode",
+          type: "select",
+          currentValue: "ask",
+          options: [{ value: "ask", name: "Ask" }],
+        },
+      ],
+    },
+  });
+  const store = new InMemorySessionStore([record]);
+  const setConfigCalls: Array<{ sessionId: string; key: string; value: string }> = [];
+  let resolveLoadStarted!: () => void;
+  let resolveLoad!: () => void;
+  let resolvePrompt!: (value: { stopReason: string }) => void;
+  const loadStarted = new Promise<void>((resolve) => {
+    resolveLoadStarted = resolve;
+  });
+  const loadGate = new Promise<void>((resolve) => {
+    resolveLoad = resolve;
+  });
+  const promptResult = new Promise<{ stopReason: string }>((resolve) => {
+    resolvePrompt = resolve;
+  });
+  const manager = new AcpRuntimeManager(
+    createRuntimeOptions({ cwd: "/workspace", sessionStore: store }),
+    {
+      clientFactory: () =>
+        ({
+          start: async () => {},
+          close: async () => {},
+          createSession: async () => ({ sessionId: "unused" }),
+          loadSession: async () => ({ agentSessionId: "unused" }),
+          hasReusableSession: () => false,
+          supportsLoadSession: () => true,
+          loadSessionWithOptions: async () => {
+            resolveLoadStarted();
+            await loadGate;
+            return {
+              agentSessionId: "unused",
+              configOptions: [
+                {
+                  id: "effort",
+                  name: "Effort",
+                  type: "select",
+                  currentValue: "medium",
+                  options: [{ value: "high", name: "High" }],
+                },
+              ],
+            };
+          },
+          getAgentLifecycleSnapshot: () => ({ running: true }),
+          prompt: async () => await promptResult,
+          requestCancelActivePrompt: async () => false,
+          hasActivePrompt: () => false,
+          setSessionMode: async () => {},
+          setSessionConfigOption: async (sessionId: string, key: string, value: string) => {
+            setConfigCalls.push({ sessionId, key, value });
+            return {
+              configOptions: [
+                {
+                  id: "effort",
+                  name: "Effort",
+                  type: "select",
+                  currentValue: value,
+                  options: [{ value, name: "High" }],
+                },
+              ],
+            };
+          },
+          clearEventHandlers: () => {},
+          setEventHandlers: () => {},
+        }) as never,
+    },
+  );
+
+  const handle = createHandle("loading-thinking-alias-session");
+  const turn = manager.startTurn({
+    handle,
+    text: "hello",
+    mode: "prompt",
+    sessionMode: "persistent",
+    requestId: "req-loading-thinking-alias",
+  });
+  const eventsPromise = collectEvents(turn.events);
+  await loadStarted;
+  const setPromise = manager.setConfigOption(handle, "thinking", "high");
+  resolveLoad();
+  await setPromise;
+  resolvePrompt({ stopReason: "end_turn" });
+  const result = await turn.result;
+  const events = await eventsPromise;
+
+  assert.deepEqual(setConfigCalls, [
+    {
+      sessionId: "loading-thinking-alias-backend-session",
+      key: "effort",
+      value: "high",
+    },
+  ]);
+  assert.deepEqual(result, { status: "completed", stopReason: "end_turn" });
+  assert.deepEqual(events, []);
+});
+
 test("AcpRuntimeManager waits for oneshot load fallback to resolve before sending controls", async () => {
   const record = makeSessionRecord({
     acpxRecordId: "fallback-session",
