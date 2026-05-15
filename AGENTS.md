@@ -21,8 +21,8 @@ instead of expanding this file into a full technical spec.
 - GitHub: `https://github.com/openclaw/acpx`
 - npm: `https://www.npmjs.com/package/acpx`
 - Default branch: `main`
-- Runtime: Node.js `>=22.12.0`
-- Package manager: `pnpm@10.23.0`
+- Runtime: Node.js `>=22.13.0`
+- Package manager: `pnpm@10.33.2`
 
 ## Product Direction
 

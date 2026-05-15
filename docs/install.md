@@ -7,7 +7,7 @@ description: Install acpx globally with npm, run it ad-hoc with npx, or build fr
 
 ## Requirements
 
-- Node.js **22.12 or newer** (see `engines.node` in `package.json`)
+- Node.js **22.13 or newer** (see `engines.node` in `package.json`)
 - The underlying coding agent CLI you plan to talk to (Codex, Claude, etc.)
 
 `acpx` itself does not need a global install of every adapter. Built-in adapters that ship as npm packages (`pi-acp`, `@zed-industries/codex-acp`, `@agentclientprotocol/claude-agent-acp`, `@kilocode/cli`, `opencode-ai`) are auto-fetched with `npx` on first use.
