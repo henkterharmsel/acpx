@@ -113,12 +113,14 @@ ACPX_AUTH_OPENAI_API_KEY=sk-… acpx codex 'do the thing'
 
 Ambient provider env vars like `OPENAI_API_KEY` are still passed through to child agents in their environment, but they do **not** trigger ACP auth-method selection on their own. This is intentional — it avoids surprise login flows in adapters that interpret an ambient key as "go ahead and authenticate."
 
-`authPolicy` controls when `acpx` invokes `authenticate` at all:
+When an adapter advertises auth methods, `acpx` invokes `authenticate` if it
+finds a matching `ACPX_AUTH_*` environment variable or `auth` config value.
+`authPolicy` controls what happens when no matching credential is available:
 
-| Value    | Behavior                                                                                     |
-| -------- | -------------------------------------------------------------------------------------------- |
-| `"skip"` | Do not call `authenticate`. Adapters that need auth must already be logged in. **(default)** |
-| `"auto"` | Call `authenticate` when the adapter advertises required auth methods.                       |
+| Value    | Behavior                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------- |
+| `"skip"` | Continue without ACP authentication and let the adapter handle auth itself. **(default)** |
+| `"fail"` | Fail immediately instead of continuing without a matching ACP credential.                 |
 
 ## Environment variables
 
