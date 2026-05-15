@@ -82,6 +82,7 @@ export type QueueTask = {
   permissionMode: PermissionMode;
   resumePolicy?: SessionResumePolicy;
   nonInteractivePermissions?: NonInteractivePermissionPolicy;
+  permissionPolicy?: AcpClientOptions["permissionPolicy"];
   timeoutMs?: number;
   suppressSdkConsoleErrors?: boolean;
   promptRetries?: number;
@@ -466,6 +467,7 @@ export class SessionQueueOwner {
         permissionMode: request.permissionMode,
         resumePolicy: request.resumePolicy,
         nonInteractivePermissions: request.nonInteractivePermissions,
+        permissionPolicy: request.permissionPolicy,
         timeoutMs: request.timeoutMs,
         suppressSdkConsoleErrors: request.suppressSdkConsoleErrors,
         promptRetries: request.promptRetries,

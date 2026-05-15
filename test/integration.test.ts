@@ -520,6 +520,78 @@ test("integration: flow run preserves approve-all through persistent ACP writes"
   });
 });
 
+test("integration: flow run applies permission policy to ACP permission requests", async () => {
+  await withTempHome(async (homeDir) => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "acpx-flow-policy-cwd-"));
+    const flowDir = await fs.mkdtemp(path.join(os.tmpdir(), "acpx-flow-policy-"));
+    const flowPath = path.join(flowDir, "permission-policy.flow.ts");
+
+    try {
+      await fs.writeFile(
+        flowPath,
+        [
+          'import { acp, defineFlow } from "acpx/flows";',
+          "",
+          "export default defineFlow({",
+          '  name: "permission-policy-flow",',
+          "  permissions: {",
+          '    requiredMode: "approve-all",',
+          "    requireExplicitGrant: true,",
+          '    reason: "This flow intentionally requests a write-like ACP permission.",',
+          "  },",
+          '  startAt: "permission",',
+          "  nodes: {",
+          "    permission: acp({",
+          '      prompt: () => "permission execute Bash",',
+          "      parse: (text) => ({ reply: text }),",
+          "    }),",
+          "  },",
+          "  edges: [],",
+          "});",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = await runCli(
+        [
+          "--agent",
+          LOAD_CAPABLE_MOCK_AGENT_COMMAND,
+          "--approve-all",
+          "--policy",
+          '{"autoDeny":["execute"]}',
+          "--cwd",
+          cwd,
+          "--format",
+          "json",
+          "flow",
+          "run",
+          flowPath,
+        ],
+        homeDir,
+      );
+
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout.trim()) as {
+        action?: string;
+        status?: string;
+        outputs?: {
+          permission?: {
+            reply?: string;
+          };
+        };
+      };
+
+      assert.equal(payload.action, "flow_run_result");
+      assert.equal(payload.status, "completed");
+      assert.equal(payload.outputs?.permission?.reply, "permission selected:reject");
+    } finally {
+      await fs.rm(flowDir, { recursive: true, force: true });
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 function jsStringLiteral(value: string): string {
   return escapeUnsafeCodeChars(JSON.stringify(value));
 }
@@ -2008,6 +2080,74 @@ test("integration: non-interactive fail emits structured permission error", asyn
   });
 });
 
+test("integration: permission policy emits structured escalation event", async () => {
+  await withTempHome(async (homeDir) => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "acpx-integration-cwd-"));
+    const policyPath = path.join(cwd, "permission-policy.json");
+
+    try {
+      await fs.writeFile(policyPath, JSON.stringify({ escalate: ["execute"] }), "utf8");
+      const result = await runCli(
+        [
+          "--agent",
+          MOCK_AGENT_COMMAND,
+          "--permission-policy",
+          policyPath,
+          "--cwd",
+          cwd,
+          "--format",
+          "json",
+          "exec",
+          "permission execute Bash",
+        ],
+        homeDir,
+      );
+
+      assert.equal(result.code, 5, result.stderr);
+      const payloads = result.stdout
+        .trim()
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as { result?: unknown; type?: string });
+      assert.equal(
+        payloads.some((payload) => payload.type === "permission_escalation"),
+        false,
+        result.stdout,
+      );
+      const escalation = payloads
+        .map((payload) => {
+          const resultPayload =
+            payload.result && typeof payload.result === "object"
+              ? (payload.result as { _meta?: unknown })
+              : undefined;
+          const meta =
+            resultPayload?._meta && typeof resultPayload._meta === "object"
+              ? (resultPayload._meta as { acpx?: unknown })
+              : undefined;
+          const acpx =
+            meta?.acpx && typeof meta.acpx === "object"
+              ? (meta.acpx as { permissionEscalation?: unknown })
+              : undefined;
+          return acpx?.permissionEscalation as
+            | { toolKind?: string; toolName?: string; toolTitle?: string }
+            | undefined;
+        })
+        .find(Boolean);
+      assert.deepEqual(
+        {
+          toolKind: escalation?.toolKind,
+          toolName: escalation?.toolName,
+          toolTitle: escalation?.toolTitle,
+        },
+        { toolKind: "execute", toolName: "Bash", toolTitle: "Bash" },
+        result.stdout,
+      );
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 test("integration: json-strict suppresses runtime stderr diagnostics", async () => {
   await withTempHome(async (homeDir) => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "acpx-integration-cwd-"));
@@ -2473,6 +2613,60 @@ test("integration: prompt reuses warm queue owner and agent pid across turns", a
         throw new Error("queue owner lock missing pid");
       }
       assert.equal(await waitForPidExit(lockTwo.pid, 5_000), true);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+test("integration: warm queue owner does not retain per-request permission policy", async () => {
+  await withTempHome(async (homeDir) => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "acpx-integration-cwd-"));
+
+    try {
+      const created = await runCli(
+        [...baseAgentArgs(cwd), "--format", "json", "sessions", "new"],
+        homeDir,
+      );
+      assert.equal(created.code, 0, created.stderr);
+
+      const first = await runCli(
+        [
+          ...baseAgentArgs(cwd),
+          "--policy",
+          '{"escalate":["execute"]}',
+          "--format",
+          "quiet",
+          "--ttl",
+          "5",
+          "prompt",
+          "permission execute Bash",
+        ],
+        homeDir,
+      );
+      assert.equal(first.code, 5, first.stderr);
+      assert.match(first.stdout, /permission selected:reject/);
+
+      const second = await runCli(
+        [
+          ...baseAgentArgs(cwd),
+          "--format",
+          "quiet",
+          "--ttl",
+          "5",
+          "prompt",
+          "permission execute Bash",
+        ],
+        homeDir,
+      );
+      assert.equal(second.code, 0, second.stderr);
+      assert.match(second.stdout, /permission selected:allow/);
+
+      const closed = await runCli(
+        [...baseAgentArgs(cwd), "--format", "json", "sessions", "close"],
+        homeDir,
+      );
+      assert.equal(closed.code, 0, closed.stderr);
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
     }

@@ -23,6 +23,24 @@ Set a project default in `.acpxrc.json` or a global default in `~/.acpx/config.j
 
 CLI flags always win over config.
 
+## Per-tool policy
+
+Use `--permission-policy <json-or-file>` (or `--policy`) to override selected ACP tool permission requests without changing the broader mode:
+
+```bash
+acpx --permission-policy '{"autoApprove":["read","search"],"escalate":["execute"],"defaultAction":"deny"}' \
+     --format json codex exec 'run the repo checks'
+```
+
+Policy keys:
+
+- `autoApprove`: tool kinds, tool title heads, titles, or raw input tool names to approve
+- `autoDeny`: matched tools to deny
+- `escalate`: matched tools that require user or orchestrator approval
+- `defaultAction`: optional fallback for unmatched requests: `approve`, `deny`, or `escalate`
+
+Rule precedence is `autoDeny`, then `autoApprove`, then `escalate`, then `defaultAction`, then the normal permission mode. Matches are case-insensitive. In non-interactive output, an escalated request is denied for the current turn. Text mode prints a `[permission]` notice; JSON mode keeps the raw ACP stream and includes structured escalation details, including tool input when supplied by the agent, in the `session/request_permission` response `_meta.acpx.permissionEscalation` object so an orchestrator can resume with a broader policy.
+
 ## What counts as a "read"
 
 Read/search requests in `--approve-reads`:

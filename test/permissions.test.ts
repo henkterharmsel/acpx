@@ -7,6 +7,7 @@ import {
   decisionToResponse,
   inferToolKind,
   resolvePermissionRequest,
+  resolvePermissionRequestWithDetails,
 } from "../src/permissions.js";
 import { withMockedReadline, withTtyState } from "./tty-test-helpers.js";
 
@@ -36,6 +37,7 @@ function makeRequestWithTitle(
   title: string | undefined,
   kind?: RequestPermissionRequest["toolCall"]["kind"],
   options: PermissionChoice[] = BASE_OPTIONS.map((option) => Object.assign({}, option)),
+  rawInput?: unknown,
 ): RequestPermissionRequest {
   return {
     sessionId: "session-1",
@@ -43,6 +45,7 @@ function makeRequestWithTitle(
       toolCallId: "tool-1",
       kind,
       title,
+      ...(rawInput !== undefined ? { rawInput } : {}),
     },
     options: options.map((option) => Object.assign({}, option)),
   } as RequestPermissionRequest;
@@ -167,6 +170,103 @@ test("approve-reads prompts interactively for non-read tools", async () => {
   });
 
   assert.equal(closed, true);
+});
+
+test("permission policy auto-approves and auto-denies matched tools", async () => {
+  await withNonTty(async () => {
+    const executeResponse = await resolvePermissionRequest(
+      makeRequestWithTitle("Bash: pnpm test", "execute"),
+      "deny-all",
+      "deny",
+      { autoApprove: ["bash"] },
+    );
+    assert.deepEqual(executeResponse, {
+      outcome: { outcome: "selected", optionId: "allow" },
+    });
+
+    const readResponse = await resolvePermissionRequest(
+      makeRequestWithTitle("Read", "read"),
+      "approve-all",
+      "deny",
+      { autoDeny: ["read"] },
+    );
+    assert.deepEqual(readResponse, {
+      outcome: { outcome: "selected", optionId: "reject" },
+    });
+  });
+});
+
+test("permission policy escalation emits a structured event in non-TTY", async () => {
+  await withNonTty(async () => {
+    const result = await resolvePermissionRequestWithDetails(
+      makeRequestWithTitle("Bash: pnpm test", "execute", undefined, {
+        command: "pnpm",
+        args: ["test"],
+      }),
+      "approve-reads",
+      "deny",
+      { escalate: ["execute"] },
+    );
+
+    assert.equal(result.escalation?.type, "permission_escalation");
+    assert.equal(result.escalation?.sessionId, "session-1");
+    assert.equal(result.escalation?.toolName, "Bash");
+    assert.equal(result.escalation?.toolTitle, "Bash: pnpm test");
+    assert.deepEqual(result.escalation?.toolInput, { command: "pnpm", args: ["test"] });
+    assert.equal(result.escalation?.toolKind, "execute");
+    assert.equal(result.escalation?.matchedRule, "execute");
+    assert.deepEqual(result.response, {
+      outcome: { outcome: "selected", optionId: "reject" },
+      _meta: {
+        acpx: {
+          permissionEscalation: result.escalation,
+        },
+      },
+    });
+  });
+});
+
+test("permission policy matches raw tool names but not raw command arguments", async () => {
+  await withNonTty(async () => {
+    const byToolName = await resolvePermissionRequest(
+      makeRequestWithTitle("Run task", "execute", undefined, {
+        toolName: "Bash",
+        command: "pnpm test",
+      }),
+      "deny-all",
+      "deny",
+      { autoApprove: ["bash"] },
+    );
+    assert.deepEqual(byToolName, {
+      outcome: { outcome: "selected", optionId: "allow" },
+    });
+
+    const byCommand = await resolvePermissionRequest(
+      makeRequestWithTitle("Run task", "execute", undefined, {
+        command: "pnpm test",
+      }),
+      "deny-all",
+      "deny",
+      { autoApprove: ["pnpm test"] },
+    );
+    assert.deepEqual(byCommand, {
+      outcome: { outcome: "selected", optionId: "reject" },
+    });
+  });
+});
+
+test("permission policy defaultAction falls back only when no rule matches", async () => {
+  await withNonTty(async () => {
+    const response = await resolvePermissionRequest(
+      makeRequestWithTitle("Write", "edit"),
+      "approve-all",
+      "deny",
+      { autoApprove: ["read"], defaultAction: "deny" },
+    );
+    assert.deepEqual(response, {
+      outcome: { outcome: "selected", optionId: "reject" },
+    });
+  });
 });
 
 test("classifyPermissionDecision maps selected outcomes to approved, denied, or cancelled", () => {

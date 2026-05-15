@@ -206,6 +206,7 @@ acpx --approve-all codex 'apply the patch and run tests'
 acpx --approve-reads codex 'inspect repo structure and suggest plan' # default mode
 acpx --deny-all codex 'explain what you can do without tool access'
 acpx --non-interactive-permissions fail codex 'fail instead of deny in non-TTY'
+acpx --policy '{"escalate":["execute"],"defaultAction":"deny"}' --format json codex exec 'ask before shell'
 
 acpx --cwd ~/repos/backend codex 'review recent auth changes'
 acpx --format text codex 'summarize your findings'

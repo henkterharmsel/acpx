@@ -19,6 +19,7 @@ import {
   type NewSessionResponse,
   type PromptRequest,
   type PromptResponse,
+  type RequestPermissionRequest,
   type SessionId,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
@@ -986,6 +987,36 @@ class MockAgent implements Agent {
       });
 
       return `wrote ${filePath}`;
+    }
+
+    if (text.startsWith("permission ")) {
+      const rest = text.slice("permission ".length).trim();
+      const firstSpace = rest.search(/\s/);
+
+      if (firstSpace <= 0) {
+        throw new Error("Usage: permission <kind> <title>");
+      }
+
+      const rawKind = rest.slice(0, firstSpace).trim();
+      const title = rest.slice(firstSpace + 1).trim();
+      const toolCallId = randomUUID();
+      const response = await this.connection.requestPermission({
+        sessionId,
+        toolCall: {
+          toolCallId,
+          title,
+          kind: rawKind as RequestPermissionRequest["toolCall"]["kind"],
+        },
+        options: [
+          { optionId: "allow", name: "Allow", kind: "allow_once" },
+          { optionId: "reject", name: "Reject", kind: "reject_once" },
+        ],
+      });
+
+      if (response.outcome.outcome === "selected") {
+        return `permission selected:${response.outcome.optionId}`;
+      }
+      return "permission cancelled";
     }
 
     if (text.startsWith("terminal ")) {

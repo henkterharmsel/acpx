@@ -8,6 +8,7 @@ import type {
   OutputErrorEmissionPolicy,
   OutputFormatter,
   PermissionMode,
+  PermissionPolicy,
   PromptInput,
   SessionResumePolicy,
   SessionEnqueueResult,
@@ -266,6 +267,7 @@ export type SubmitToQueueOwnerOptions = {
   permissionMode: PermissionMode;
   resumePolicy?: SessionResumePolicy;
   nonInteractivePermissions?: NonInteractivePermissionPolicy;
+  permissionPolicy?: PermissionPolicy;
   outputFormatter: OutputFormatter;
   errorEmissionPolicy?: OutputErrorEmissionPolicy;
   timeoutMs?: number;
@@ -290,6 +292,7 @@ async function submitToQueueOwner(
     permissionMode: options.permissionMode,
     resumePolicy: options.resumePolicy,
     nonInteractivePermissions: options.nonInteractivePermissions,
+    permissionPolicy: options.permissionPolicy,
     timeoutMs: options.timeoutMs,
     suppressSdkConsoleErrors: options.suppressSdkConsoleErrors,
     promptRetries: options.promptRetries ?? 0,
@@ -364,6 +367,11 @@ async function submitToQueueOwner(
 
       if (message.type === "event") {
         options.outputFormatter.onAcpMessage(message.message);
+        return;
+      }
+
+      if (message.type === "permission_escalation") {
+        options.outputFormatter.onPermissionEscalation(message.event);
         return;
       }
 

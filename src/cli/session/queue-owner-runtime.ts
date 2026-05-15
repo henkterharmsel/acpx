@@ -53,6 +53,7 @@ async function submitToRunningOwner(
     prompt: options.prompt,
     permissionMode: options.permissionMode,
     nonInteractivePermissions: options.nonInteractivePermissions,
+    permissionPolicy: options.permissionPolicy,
     outputFormatter: options.outputFormatter,
     errorEmissionPolicy: options.errorEmissionPolicy,
     timeoutMs: options.timeoutMs,

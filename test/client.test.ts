@@ -357,6 +357,41 @@ test("AcpClient handlePermissionRequest records approved decisions", async () =>
   });
 });
 
+test("AcpClient partial runtime option updates preserve permission policy", async () => {
+  const client = makeClient({
+    permissionMode: "approve-all",
+    permissionPolicy: {
+      autoDeny: ["execute"],
+    },
+  });
+
+  client.updateRuntimeOptions({ verbose: true });
+
+  const denied = await asInternals(client).handlePermissionRequest?.(
+    makePermissionRequest("session-policy-preserve-1", "execute"),
+  );
+
+  assert.deepEqual(denied, {
+    outcome: {
+      outcome: "selected",
+      optionId: "reject",
+    },
+  });
+
+  client.updateRuntimeOptions({ permissionPolicy: undefined });
+
+  const approved = await asInternals(client).handlePermissionRequest?.(
+    makePermissionRequest("session-policy-preserve-2", "execute"),
+  );
+
+  assert.deepEqual(approved, {
+    outcome: {
+      outcome: "selected",
+      optionId: "allow",
+    },
+  });
+});
+
 test("AcpClient onPermissionRequest decision short-circuits the mode-based resolver", async () => {
   let callbackInvocations = 0;
   const client = makeClient({

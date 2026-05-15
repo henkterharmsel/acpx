@@ -9,6 +9,8 @@ import {
   type OutputErrorAcpPayload,
   type OutputErrorCode,
   type OutputErrorOrigin,
+  type PermissionEscalationEvent,
+  type PermissionPolicy,
 } from "../../types.js";
 import type {
   AcpJsonRpcMessage,
@@ -30,6 +32,7 @@ export type QueueSubmitRequest = {
   permissionMode: PermissionMode;
   resumePolicy?: SessionResumePolicy;
   nonInteractivePermissions?: NonInteractivePermissionPolicy;
+  permissionPolicy?: PermissionPolicy;
   timeoutMs?: number;
   suppressSdkConsoleErrors?: boolean;
   promptRetries?: number;
@@ -96,6 +99,13 @@ export type QueueOwnerEventMessage = {
   message: AcpJsonRpcMessage;
 };
 
+export type QueueOwnerPermissionEscalationMessage = {
+  type: "permission_escalation";
+  requestId: string;
+  ownerGeneration?: number;
+  event: PermissionEscalationEvent;
+};
+
 export type QueueOwnerResultMessage = {
   type: "result";
   requestId: string;
@@ -154,6 +164,7 @@ export type QueueOwnerErrorMessage = {
 export type QueueOwnerMessage =
   | QueueOwnerAcceptedMessage
   | QueueOwnerEventMessage
+  | QueueOwnerPermissionEscalationMessage
   | QueueOwnerResultMessage
   | QueueOwnerCancelResultMessage
   | QueueOwnerSetModeResultMessage
@@ -181,12 +192,54 @@ function isNonInteractivePermissionPolicy(value: unknown): value is NonInteracti
   return value === "deny" || value === "fail";
 }
 
+function isPermissionPolicy(value: unknown): value is PermissionPolicy {
+  if (value == null) {
+    return false;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const stringListKeys = ["autoApprove", "autoDeny", "escalate"] as const;
+  for (const key of stringListKeys) {
+    const entry = record[key];
+    if (entry == null) {
+      continue;
+    }
+    if (!Array.isArray(entry) || entry.some((item) => typeof item !== "string")) {
+      return false;
+    }
+  }
+  return (
+    record.defaultAction == null ||
+    record.defaultAction === "approve" ||
+    record.defaultAction === "deny" ||
+    record.defaultAction === "escalate"
+  );
+}
+
 function isOutputErrorCode(value: unknown): value is OutputErrorCode {
   return typeof value === "string" && OUTPUT_ERROR_CODES.includes(value as OutputErrorCode);
 }
 
 function isOutputErrorOrigin(value: unknown): value is OutputErrorOrigin {
   return typeof value === "string" && OUTPUT_ERROR_ORIGINS.includes(value as OutputErrorOrigin);
+}
+
+function isPermissionEscalationEvent(value: unknown): value is PermissionEscalationEvent {
+  const event = asRecord(value);
+  return (
+    event?.type === "permission_escalation" &&
+    typeof event.sessionId === "string" &&
+    typeof event.toolCallId === "string" &&
+    typeof event.toolTitle === "string" &&
+    event.action === "escalate" &&
+    typeof event.message === "string" &&
+    typeof event.timestamp === "string" &&
+    (event.toolName == null || typeof event.toolName === "string") &&
+    (event.toolKind == null || typeof event.toolKind === "string") &&
+    (event.matchedRule == null || typeof event.matchedRule === "string")
+  );
 }
 
 function parseSessionOptions(value: unknown): QueueSessionOptions | null | undefined {
@@ -291,6 +344,12 @@ export function parseQueueRequest(raw: unknown): QueueRequest | null {
         : isNonInteractivePermissionPolicy(request.nonInteractivePermissions)
           ? request.nonInteractivePermissions
           : null;
+    const permissionPolicy =
+      request.permissionPolicy == null
+        ? undefined
+        : isPermissionPolicy(request.permissionPolicy)
+          ? request.permissionPolicy
+          : null;
     const suppressSdkConsoleErrors =
       request.suppressSdkConsoleErrors == null
         ? undefined
@@ -308,6 +367,7 @@ export function parseQueueRequest(raw: unknown): QueueRequest | null {
       resumePolicy === null ||
       prompt === null ||
       nonInteractivePermissions === null ||
+      permissionPolicy === null ||
       suppressSdkConsoleErrors === null ||
       promptRetries === null ||
       sessionOptions === null ||
@@ -325,6 +385,7 @@ export function parseQueueRequest(raw: unknown): QueueRequest | null {
       permissionMode: request.permissionMode,
       ...(resumePolicy !== undefined ? { resumePolicy } : {}),
       nonInteractivePermissions,
+      ...(permissionPolicy !== undefined ? { permissionPolicy } : {}),
       timeoutMs,
       ...(suppressSdkConsoleErrors !== undefined ? { suppressSdkConsoleErrors } : {}),
       ...(promptRetries !== undefined ? { promptRetries } : {}),
@@ -479,6 +540,19 @@ export function parseQueueOwnerMessage(raw: unknown): QueueOwnerMessage | null {
       requestId: message.requestId,
       ownerGeneration,
       message: message.message,
+    };
+  }
+
+  if (message.type === "permission_escalation") {
+    if (!isPermissionEscalationEvent(message.event)) {
+      return null;
+    }
+
+    return {
+      type: "permission_escalation",
+      requestId: message.requestId,
+      ownerGeneration,
+      event: message.event,
     };
   }
 

@@ -16,7 +16,7 @@ import {
   runOnce,
   sendSessionDirect,
 } from "../session/session.js";
-import type { PromptInput, SessionRecord } from "../types.js";
+import type { PermissionPolicy, PromptInput, SessionRecord } from "../types.js";
 import { acp, action, checkpoint, compute, defineFlow, shell } from "./definition.js";
 import { formatShellActionSummary, runShellAction } from "./executors/shell.js";
 import { resolveNext, resolveNextForOutcome, validateFlowDefinition } from "./graph.js";
@@ -124,6 +124,7 @@ export class FlowRunner {
   private readonly permissionMode;
   private readonly mcpServers?;
   private readonly nonInteractivePermissions?;
+  private readonly permissionPolicy?: PermissionPolicy;
   private readonly authCredentials?;
   private readonly authPolicy?;
   private readonly timeoutMs?;
@@ -141,6 +142,7 @@ export class FlowRunner {
     this.permissionMode = options.permissionMode;
     this.mcpServers = options.mcpServers;
     this.nonInteractivePermissions = options.nonInteractivePermissions;
+    this.permissionPolicy = options.permissionPolicy;
     this.authCredentials = options.authCredentials;
     this.authPolicy = options.authPolicy;
     this.timeoutMs = options.timeoutMs;
@@ -889,6 +891,7 @@ export class FlowRunner {
       mcpServers: this.mcpServers,
       permissionMode: this.permissionMode,
       nonInteractivePermissions: this.nonInteractivePermissions,
+      permissionPolicy: this.permissionPolicy,
       authCredentials: this.authCredentials,
       authPolicy: this.authPolicy,
       timeoutMs,
@@ -949,6 +952,7 @@ export class FlowRunner {
         mcpServers: this.mcpServers,
         permissionMode: this.permissionMode,
         nonInteractivePermissions: this.nonInteractivePermissions,
+        permissionPolicy: this.permissionPolicy,
         authCredentials: this.authCredentials,
         authPolicy: this.authPolicy,
         outputFormatter: capture.formatter,
@@ -1039,6 +1043,7 @@ export class FlowRunner {
       mcpServers: this.mcpServers,
       permissionMode: this.permissionMode,
       nonInteractivePermissions: this.nonInteractivePermissions,
+      permissionPolicy: this.permissionPolicy,
       authCredentials: this.authCredentials,
       authPolicy: this.authPolicy,
       outputFormatter: capture.formatter,

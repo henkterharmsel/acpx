@@ -47,6 +47,8 @@ import type {
   OutputErrorCode,
   OutputErrorOrigin,
   OutputFormatter,
+  PermissionEscalationEvent,
+  PermissionPolicy,
   RunPromptResult,
   SessionRecord,
   SessionSendResult,
@@ -109,6 +111,14 @@ class QueueTaskOutputFormatter implements OutputFormatter {
     });
   }
 
+  onPermissionEscalation(event: PermissionEscalationEvent): void {
+    this.send({
+      type: "permission_escalation",
+      requestId: this.requestId,
+      event,
+    });
+  }
+
   flush(): void {}
 }
 
@@ -116,6 +126,7 @@ const DISCARD_OUTPUT_FORMATTER: OutputFormatter = {
   setContext() {},
   onAcpMessage() {},
   onError() {},
+  onPermissionEscalation() {},
   flush() {},
 };
 
@@ -283,6 +294,7 @@ export async function runQueuedTask(
     verbose?: boolean;
     mcpServers?: McpServer[];
     nonInteractivePermissions?: NonInteractivePermissionPolicy;
+    permissionPolicy?: PermissionPolicy;
     authCredentials?: Record<string, string>;
     authPolicy?: AuthPolicy;
     suppressSdkConsoleErrors?: boolean;
@@ -306,6 +318,7 @@ export async function runQueuedTask(
       resumePolicy: task.resumePolicy,
       nonInteractivePermissions:
         task.nonInteractivePermissions ?? options.nonInteractivePermissions,
+      permissionPolicy: task.permissionPolicy,
       authCredentials: options.authCredentials,
       authPolicy: options.authPolicy,
       outputFormatter,
@@ -452,6 +465,7 @@ async function runSessionPrompt(options: RunSessionPromptOptions): Promise<Sessi
       mcpServers: options.mcpServers,
       permissionMode: options.permissionMode,
       nonInteractivePermissions: options.nonInteractivePermissions,
+      permissionPolicy: options.permissionPolicy,
       authCredentials: options.authCredentials,
       authPolicy: options.authPolicy,
       terminal: options.terminal,
@@ -462,6 +476,7 @@ async function runSessionPrompt(options: RunSessionPromptOptions): Promise<Sessi
   client.updateRuntimeOptions({
     permissionMode: options.permissionMode,
     nonInteractivePermissions: options.nonInteractivePermissions,
+    permissionPolicy: options.permissionPolicy,
     terminal: options.terminal,
     suppressSdkConsoleErrors: options.suppressSdkConsoleErrors,
     verbose: options.verbose,
@@ -496,6 +511,10 @@ async function runSessionPrompt(options: RunSessionPromptOptions): Promise<Sessi
       trimConversationForRuntime(conversation);
       liveCheckpoint.request();
       options.onClientOperation?.(operation);
+    },
+    onPermissionEscalation: (event) => {
+      output.onPermissionEscalation(event);
+      options.onPermissionEscalation?.(event);
     },
   });
   let activeSessionIdForControl = record.acpSessionId;
@@ -756,6 +775,7 @@ export async function runOnce(options: RunOnceOptions): Promise<RunPromptResult>
     mcpServers: options.mcpServers,
     permissionMode: options.permissionMode,
     nonInteractivePermissions: options.nonInteractivePermissions,
+    permissionPolicy: options.permissionPolicy,
     authCredentials: options.authCredentials,
     authPolicy: options.authPolicy,
     terminal: options.terminal,
@@ -774,6 +794,10 @@ export async function runOnce(options: RunOnceOptions): Promise<RunPromptResult>
         promptTurnHadSideEffects = true;
       }
       options.onClientOperation?.(operation);
+    },
+    onPermissionEscalation: (event) => {
+      output.onPermissionEscalation(event);
+      options.onPermissionEscalation?.(event);
     },
     sessionOptions: options.sessionOptions,
   });
@@ -858,6 +882,7 @@ export async function sendSessionDirect(options: SessionSendOptions): Promise<Se
     permissionMode: options.permissionMode,
     resumePolicy: options.resumePolicy,
     nonInteractivePermissions: options.nonInteractivePermissions,
+    permissionPolicy: options.permissionPolicy,
     authCredentials: options.authCredentials,
     authPolicy: options.authPolicy,
     terminal: options.terminal,
@@ -865,6 +890,7 @@ export async function sendSessionDirect(options: SessionSendOptions): Promise<Se
     onAcpMessage: options.onAcpMessage,
     onSessionUpdate: options.onSessionUpdate,
     onClientOperation: options.onClientOperation,
+    onPermissionEscalation: options.onPermissionEscalation,
     timeoutMs: options.timeoutMs,
     suppressSdkConsoleErrors: options.suppressSdkConsoleErrors,
     verbose: options.verbose,

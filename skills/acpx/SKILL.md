@@ -217,6 +217,7 @@ Behavior:
 - `--approve-reads`: auto-approve reads/searches, prompt for writes (default mode)
 - `--deny-all`: deny all permission requests
 - `--non-interactive-permissions <policy>`: when prompting is unavailable, choose `deny` or `fail`
+- `--permission-policy <json-or-file>` / `--policy`: per-tool ACP permission rules (`autoApprove`, `autoDeny`, `escalate`, `defaultAction`)
 - `--format <fmt>`: output format (`text`, `json`, `quiet`)
 - `--json-strict`: strict JSON mode; requires `--format json` and suppresses non-JSON stderr output
 - `--suppress-reads`: suppress raw read-file contents while preserving the selected format
@@ -354,6 +355,7 @@ acpx --format json codex exec 'review changed files' \
 - `--approve-reads` (default): approve reads/searches, prompt for writes
 - `--deny-all`: deny all permission requests
 - `--non-interactive-permissions <deny|fail>`: chosen behavior when no TTY is available to prompt
+- `--policy <json-or-file>`: match ACP permission requests by tool kind/title; non-interactive escalations add ACP response metadata
 
 If every permission request is denied/cancelled and none approved, `acpx` exits with permission-denied status.
 

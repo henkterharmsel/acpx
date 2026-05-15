@@ -38,6 +38,9 @@ const NOOP_OUTPUT_FORMATTER: OutputFormatter = {
   onError() {
     // no-op
   },
+  onPermissionEscalation() {
+    // no-op
+  },
   flush() {
     // no-op
   },
@@ -395,6 +398,9 @@ test("trySubmitToRunningOwner streams queued lifecycle and returns result", asyn
       },
       onError(params) {
         events.push(`error:${params.code}`);
+      },
+      onPermissionEscalation(event) {
+        events.push(`permission:${event.toolCallId}`);
       },
       flush() {
         events.push("flush");

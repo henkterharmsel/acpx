@@ -46,7 +46,7 @@ import {
   classifyPermissionDecision,
   decisionToResponse,
   inferToolKind,
-  resolvePermissionRequest,
+  resolvePermissionRequestWithDetails,
 } from "../permissions.js";
 import { textPrompt } from "../prompt-content.js";
 import { extractRuntimeSessionId } from "../session/runtime-session-id.js";
@@ -252,7 +252,11 @@ export class AcpClient {
   private loadedSessionId?: string;
   private eventHandlers: Pick<
     AcpClientOptions,
-    "onAcpMessage" | "onAcpOutputMessage" | "onSessionUpdate" | "onClientOperation"
+    | "onAcpMessage"
+    | "onAcpOutputMessage"
+    | "onSessionUpdate"
+    | "onClientOperation"
+    | "onPermissionEscalation"
   >;
   private readonly permissionStats: PermissionStats = {
     requested: 0,
@@ -291,6 +295,7 @@ export class AcpClient {
       onAcpOutputMessage: this.options.onAcpOutputMessage,
       onSessionUpdate: this.options.onSessionUpdate,
       onClientOperation: this.options.onClientOperation,
+      onPermissionEscalation: this.options.onPermissionEscalation,
     };
 
     this.filesystem = new FileSystemHandlers({
@@ -349,7 +354,11 @@ export class AcpClient {
   setEventHandlers(
     handlers: Pick<
       AcpClientOptions,
-      "onAcpMessage" | "onAcpOutputMessage" | "onSessionUpdate" | "onClientOperation"
+      | "onAcpMessage"
+      | "onAcpOutputMessage"
+      | "onSessionUpdate"
+      | "onClientOperation"
+      | "onPermissionEscalation"
     >,
   ): void {
     this.eventHandlers = { ...handlers };
@@ -362,6 +371,7 @@ export class AcpClient {
   updateRuntimeOptions(options: {
     permissionMode?: PermissionMode;
     nonInteractivePermissions?: NonInteractivePermissionPolicy;
+    permissionPolicy?: AcpClientOptions["permissionPolicy"];
     terminal?: boolean;
     suppressSdkConsoleErrors?: boolean;
     verbose?: boolean;
@@ -371,6 +381,9 @@ export class AcpClient {
     }
     if (options.nonInteractivePermissions !== undefined) {
       this.options.nonInteractivePermissions = options.nonInteractivePermissions;
+    }
+    if (Object.prototype.hasOwnProperty.call(options, "permissionPolicy")) {
+      this.options.permissionPolicy = options.permissionPolicy;
     }
     if (options.terminal !== undefined) {
       this.options.terminal = options.terminal;
@@ -1261,11 +1274,16 @@ export class AcpClient {
 
     let response: RequestPermissionResponse;
     try {
-      response = await resolvePermissionRequest(
+      const result = await resolvePermissionRequestWithDetails(
         params,
         this.options.permissionMode,
         this.options.nonInteractivePermissions ?? "deny",
+        this.options.permissionPolicy,
       );
+      response = result.response;
+      if (result.escalation) {
+        this.eventHandlers.onPermissionEscalation?.(result.escalation);
+      }
     } catch (error) {
       if (error instanceof PermissionPromptUnavailableError) {
         this.notePromptPermissionFailure(params.sessionId, error);

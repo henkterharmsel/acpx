@@ -49,6 +49,30 @@ export type AuthPolicy = (typeof AUTH_POLICIES)[number];
 export const NON_INTERACTIVE_PERMISSION_POLICIES = ["deny", "fail"] as const;
 export type NonInteractivePermissionPolicy = (typeof NON_INTERACTIVE_PERMISSION_POLICIES)[number];
 
+export const PERMISSION_POLICY_ACTIONS = ["approve", "deny", "escalate"] as const;
+export type PermissionPolicyAction = (typeof PERMISSION_POLICY_ACTIONS)[number];
+
+export type PermissionPolicy = {
+  autoApprove?: string[];
+  autoDeny?: string[];
+  escalate?: string[];
+  defaultAction?: PermissionPolicyAction;
+};
+
+export type PermissionEscalationEvent = {
+  type: "permission_escalation";
+  sessionId: string;
+  toolCallId: string;
+  toolName?: string;
+  toolTitle: string;
+  toolInput?: unknown;
+  toolKind?: ToolKind;
+  action: "escalate";
+  matchedRule?: string;
+  message: string;
+  timestamp: string;
+};
+
 export const SESSION_RESUME_POLICIES = ["allow-new", "same-session-only"] as const;
 export type SessionResumePolicy = (typeof SESSION_RESUME_POLICIES)[number];
 
@@ -171,6 +195,7 @@ export interface OutputFormatter {
     acp?: OutputErrorAcpPayload;
     timestamp?: string;
   }): void;
+  onPermissionEscalation(event: PermissionEscalationEvent): void;
   flush(): void;
 }
 
@@ -180,6 +205,7 @@ export type AcpClientOptions = {
   mcpServers?: McpServer[];
   permissionMode: PermissionMode;
   nonInteractivePermissions?: NonInteractivePermissionPolicy;
+  permissionPolicy?: PermissionPolicy;
   authCredentials?: Record<string, string>;
   authPolicy?: AuthPolicy;
   terminal?: boolean;
@@ -195,6 +221,7 @@ export type AcpClientOptions = {
   onAcpOutputMessage?: (direction: AcpMessageDirection, message: AcpJsonRpcMessage) => void;
   onSessionUpdate?: (notification: SessionNotification) => void;
   onClientOperation?: (operation: ClientOperation) => void;
+  onPermissionEscalation?: (event: PermissionEscalationEvent) => void;
   onPermissionRequest?: (
     req: AcpPermissionRequest,
     ctx: { signal: AbortSignal },
