@@ -8,7 +8,18 @@ description: Install acpx globally with npm, run it ad-hoc with npx, or build fr
 ## Requirements
 
 - Node.js **22.13 or newer** (see `engines.node` in `package.json`)
+- pnpm **10.33.2** for source builds
 - The underlying coding agent CLI you plan to talk to (Codex, Claude, etc.)
+
+If pnpm is not installed yet, use npm:
+
+```bash
+npm install -g pnpm@10.33.2
+```
+
+Some older Corepack builds bundled with supported Node.js versions have stale
+package-signing keys and fail while preparing current pnpm releases. Installing
+pnpm with npm avoids that bootstrap failure.
 
 `acpx` itself does not need a global install of every adapter. Built-in adapters that ship as npm packages (`pi-acp`, `@zed-industries/codex-acp`, `@agentclientprotocol/claude-agent-acp`, `@kilocode/cli`, `opencode-ai`) are auto-fetched with `npx` on first use.
 
@@ -63,6 +74,7 @@ For development or to test an unreleased branch:
 ```bash
 git clone https://github.com/openclaw/acpx.git
 cd acpx
+npm install -g pnpm@10.33.2 # if pnpm is not already installed
 pnpm install
 pnpm run build
 node dist/cli.js --help

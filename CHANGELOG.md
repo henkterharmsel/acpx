@@ -26,6 +26,7 @@ Repo: https://github.com/openclaw/acpx
 - Replay viewer: make `pnpm viewer status` and `pnpm viewer stop` dispatch to the requested command instead of always prepending `start`.
 - Package: keep `npm pack --json` output parseable by running the prepack build quietly.
 - Tooling: document the current Node.js 22.13+ and pnpm 10.33.2 floor.
+- Tooling/docs: document npm-based pnpm bootstrap for clean Node 22.13 setups with stale Corepack signing keys.
 - Docs/auth: document the supported `authPolicy` values and ACP credential selection behavior.
 - Docs/skills: make the quick setup skill-install command noninteractive and route unsupported harnesses to the reference URL.
 

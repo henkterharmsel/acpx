@@ -23,6 +23,8 @@ instead of expanding this file into a full technical spec.
 - Default branch: `main`
 - Runtime: Node.js `>=22.13.0`
 - Package manager: `pnpm@10.33.2`
+- Clean Node 22.13 setups can have stale Corepack signing keys; install pnpm
+  with `npm install -g pnpm@10.33.2` if `corepack prepare` fails.
 
 ## Product Direction
 
