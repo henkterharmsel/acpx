@@ -106,6 +106,31 @@ test("config commands accept command-local --format json", async () => {
   });
 });
 
+test(
+  "CLI exits cleanly when stdout pipe closes early",
+  { skip: process.platform === "win32" },
+  async () => {
+    await withTempHome(async (homeDir) => {
+      const cwd = path.join(homeDir, "workspace");
+      await fs.mkdir(cwd, { recursive: true });
+
+      const result = await runShell(
+        '"$NODE" "$CLI_PATH" --cwd "$WORK" --approve-all --agent "$MOCK_AGENT" exec "echo pipe-ok" | grep -q pipe-ok',
+        {
+          HOME: homeDir,
+          NODE: process.execPath,
+          CLI_PATH,
+          WORK: cwd,
+          MOCK_AGENT: MOCK_AGENT_COMMAND,
+        },
+      );
+
+      assert.equal(result.code, 0, result.stderr);
+      assert.doesNotMatch(result.stderr, /EPIPE|Unhandled 'error'/);
+    });
+  },
+);
+
 function parseSingleAcpErrorLine(stdout: string): ParsedAcpError {
   const payload = JSON.parse(stdout.trim()) as {
     jsonrpc?: string;
@@ -2326,6 +2351,35 @@ type CliRunOptions = {
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
 };
+
+async function runShell(command: string, env: NodeJS.ProcessEnv = {}): Promise<CliRunResult> {
+  return await new Promise<CliRunResult>((resolve) => {
+    const child = spawn("/bin/bash", ["-o", "pipefail", "-c", command], {
+      env: {
+        ...process.env,
+        ...env,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.once("close", (code) => {
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
 
 async function runCli(
   args: string[],

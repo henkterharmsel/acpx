@@ -25,6 +25,7 @@ Repo: https://github.com/openclaw/acpx
 - Replay viewer: add help output for `pnpm viewer --help` without starting a server.
 - Replay viewer: make `pnpm viewer status` and `pnpm viewer stop` dispatch to the requested command instead of always prepending `start`.
 - Package: keep `npm pack --json` output parseable by running the prepack build quietly.
+- CLI/output: exit cleanly on broken pipes so common pipelines such as `acpx ... | grep -q ...` do not crash with an unhandled `EPIPE`.
 - Tooling: document the current Node.js 22.13+ and pnpm 10.33.2 floor.
 - Tooling/docs: document npm-based pnpm bootstrap for clean Node 22.13 setups with stale Corepack signing keys.
 - Docs/auth: document the supported `authPolicy` values and ACP credential selection behavior.
