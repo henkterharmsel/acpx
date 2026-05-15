@@ -11,21 +11,50 @@ const DIST_CLI_PATH = path.join(process.cwd(), "dist", "cli.js");
 const MOCK_AGENT_PATH = fileURLToPath(new URL("./mock-agent.js", import.meta.url));
 const MOCK_AGENT_COMMAND = `node ${JSON.stringify(MOCK_AGENT_PATH)}`;
 
+type PackageJson = {
+  version?: unknown;
+  bin?: {
+    acpx?: unknown;
+  };
+};
+
 type CliRunResult = {
   code: number | null;
   stdout: string;
   stderr: string;
 };
 
+function readPackageJson(): PackageJson {
+  return JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as PackageJson;
+}
+
 function readPackageVersion(): string {
-  const parsed = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as {
-    version?: unknown;
-  };
+  const parsed = readPackageJson();
   const { version } = parsed;
   if (typeof version !== "string") {
     throw new Error("package.json version is missing");
   }
   return version;
+}
+
+function readPackageBinPath(): string {
+  const parsed = readPackageJson();
+  const binPath = parsed.bin?.acpx;
+  if (typeof binPath !== "string" || binPath.length === 0) {
+    throw new Error("package.json bin.acpx is missing");
+  }
+  return path.join(process.cwd(), binPath);
+}
+
+function packageBinSpawnArgs(args: string[]): {
+  command: string;
+  args: string[];
+} {
+  const binPath = readPackageBinPath();
+  if (process.platform === "win32") {
+    return { command: process.execPath, args: [binPath, ...args] };
+  }
+  return { command: binPath, args };
 }
 
 async function withTempHome(run: (homeDir: string) => Promise<void>): Promise<void> {
@@ -37,7 +66,7 @@ async function withTempHome(run: (homeDir: string) => Promise<void>): Promise<vo
   }
 }
 
-async function runDistCli(args: string[], homeDir: string): Promise<CliRunResult> {
+async function runPackageBin(args: string[], homeDir: string): Promise<CliRunResult> {
   return await new Promise<CliRunResult>((resolve) => {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -45,7 +74,8 @@ async function runDistCli(args: string[], homeDir: string): Promise<CliRunResult
     };
     delete env.NODE_V8_COVERAGE;
 
-    const child = spawn(process.execPath, [DIST_CLI_PATH, ...args], {
+    const command = packageBinSpawnArgs(args);
+    const child = spawn(command.command, command.args, {
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -69,14 +99,14 @@ async function runDistCli(args: string[], homeDir: string): Promise<CliRunResult
   });
 }
 
-test("packaged bin prints version from dist entrypoint", async (t) => {
+test("packaged bin prints version through package executable mapping", async (t) => {
   if (!existsSync(DIST_CLI_PATH)) {
     t.skip("run pnpm build before packaged-bin smoke tests");
     return;
   }
 
   await withTempHome(async (homeDir) => {
-    const result = await runDistCli(["--version"], homeDir);
+    const result = await runPackageBin(["--version"], homeDir);
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stderr.trim(), "");
@@ -91,7 +121,7 @@ test("packaged bin prints version with top-level output flags", async (t) => {
   }
 
   await withTempHome(async (homeDir) => {
-    const result = await runDistCli(["--json-strict", "--version"], homeDir);
+    const result = await runPackageBin(["--json-strict", "--version"], homeDir);
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stderr.trim(), "");
@@ -99,7 +129,7 @@ test("packaged bin prints version with top-level output flags", async (t) => {
   });
 });
 
-test("packaged bin runs a mock-agent exec command from dist entrypoint", async (t) => {
+test("packaged bin runs a mock-agent exec command through package executable mapping", async (t) => {
   if (!existsSync(DIST_CLI_PATH)) {
     t.skip("run pnpm build before packaged-bin smoke tests");
     return;
@@ -109,7 +139,7 @@ test("packaged bin runs a mock-agent exec command from dist entrypoint", async (
     const cwd = path.join(homeDir, "workspace");
     await fs.mkdir(cwd, { recursive: true });
 
-    const result = await runDistCli(
+    const result = await runPackageBin(
       [
         "--agent",
         MOCK_AGENT_COMMAND,

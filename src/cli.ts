@@ -18,14 +18,6 @@ function installBrokenPipeHandler(stream: NodeJS.WritableStream): void {
   });
 }
 
-installBrokenPipeHandler(process.stdout);
-installBrokenPipeHandler(process.stderr);
-
-const queueOwnerArgOverride = buildQueueOwnerArgOverride(fileURLToPath(import.meta.url));
-if (queueOwnerArgOverride) {
-  process.env.ACPX_QUEUE_OWNER_ARGS ??= queueOwnerArgOverride;
-}
-
 function isCliEntrypoint(argv: string[]): boolean {
   const entry = argv[1];
   if (!entry) {
@@ -43,5 +35,13 @@ function isCliEntrypoint(argv: string[]): boolean {
 }
 
 if (isCliEntrypoint(process.argv)) {
+  installBrokenPipeHandler(process.stdout);
+  installBrokenPipeHandler(process.stderr);
+
+  const queueOwnerArgOverride = buildQueueOwnerArgOverride(fileURLToPath(import.meta.url));
+  if (queueOwnerArgOverride) {
+    process.env.ACPX_QUEUE_OWNER_ARGS ??= queueOwnerArgOverride;
+  }
+
   void main(process.argv);
 }

@@ -13,6 +13,7 @@ Repo: https://github.com/openclaw/acpx
 ### Fixes
 
 - CLI: treat `--version` after `--` as prompt text instead of intercepting it as a top-level version request.
+- CLI/API: avoid installing CLI-only process handlers when the package entrypoint is imported as a module.
 
 ## 2026.5.15 (v0.8.0)
 
