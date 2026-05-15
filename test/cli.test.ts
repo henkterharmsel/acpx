@@ -454,6 +454,47 @@ test("sessions ensure creates when missing and returns existing on subsequent ca
   });
 });
 
+test("sessions new and ensure accept -s as shorthand for --name", async () => {
+  await withTempHome(async (homeDir) => {
+    const cwd = path.join(homeDir, "workspace");
+    await fs.mkdir(cwd, { recursive: true });
+    await fs.mkdir(path.join(homeDir, ".acpx"), { recursive: true });
+    await fs.writeFile(
+      path.join(homeDir, ".acpx", "config.json"),
+      `${JSON.stringify(
+        {
+          agents: {
+            codex: {
+              command: MOCK_AGENT_COMMAND,
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const created = await runCli(
+      ["--cwd", cwd, "--format", "json", "codex", "sessions", "new", "-s", "ci"],
+      homeDir,
+    );
+    assert.equal(created.code, 0, created.stderr);
+    const createdPayload = JSON.parse(created.stdout.trim()) as Record<string, unknown>;
+    assert.equal(createdPayload.name, "ci");
+
+    const ensured = await runCli(
+      ["--cwd", cwd, "--format", "json", "codex", "sessions", "ensure", "-s", "ci"],
+      homeDir,
+    );
+    assert.equal(ensured.code, 0, ensured.stderr);
+    const ensuredPayload = JSON.parse(ensured.stdout.trim()) as Record<string, unknown>;
+    assert.equal(ensuredPayload.action, "session_ensured");
+    assert.equal(ensuredPayload.created, false);
+    assert.equal(ensuredPayload.name, "ci");
+  });
+});
+
 test("sessions ensure --resume-session loads ACP session when creating missing session", async () => {
   await withTempHome(async (homeDir) => {
     const cwd = path.join(homeDir, "workspace");

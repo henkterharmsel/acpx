@@ -21,6 +21,7 @@ Repo: https://github.com/openclaw/acpx
 - Flows: keep external TypeScript flow modules that import `acpx/flows` compatible with current `tsx` loader behavior.
 - Terminal: run no-argument `terminal/create` command lines so agents that send an unsplit command do not fail with `ENOENT`. Thanks @xdjyxu.
 - CLI/config: accept command-local `--format` on `config show` and `config init`.
+- CLI/sessions: accept the documented `-s` shorthand on `sessions new` and `sessions ensure`.
 
 ## 2026.5.5 (v0.7.0)
 
