@@ -78,6 +78,10 @@ A custom agent must:
 
 `fs/*` and `terminal/*` client methods are stable on the `acpx` side and respect cwd sandboxing — your adapter can request file reads, writes, and terminal calls and they will be routed through `acpx`'s permission policy.
 
+### Troubleshooting `session/new`
+
+Some ACP servers require their own project or workspace mapping before they can create a session. If `sessions new` or `sessions ensure` fails at `session/new` for a custom server, verify the server-side project initialization first, then retry with the same cwd and explicit environment you expect the server to see.
+
 ## Practical examples
 
 Local dev server with arguments:
