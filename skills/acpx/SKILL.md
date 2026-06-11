@@ -55,6 +55,8 @@ For normal session reuse, prefer a global install over `npx`.
 acpx [global_options] [prompt_text...]
 acpx [global_options] prompt [prompt_options] [prompt_text...]
 acpx [global_options] exec [prompt_options] [prompt_text...]
+acpx [global_options] compare <agent>... '<prompt_text>'
+acpx [global_options] compare <agent>... --file <path>
 acpx [global_options] cancel [-s <name>]
 acpx [global_options] set-mode <mode> [-s <name>]
 acpx [global_options] set <key> <value> [-s <name>]
@@ -148,6 +150,23 @@ Behavior:
 
 - Runs a single prompt in a temporary ACP session
 - Does not reuse or save persistent session state
+
+### Compare (multi-agent one-shot)
+
+```bash
+acpx compare pi openclaw codex 'summarize this checkout'
+acpx --format json compare codex claude --file prompt.md
+```
+
+Behavior:
+
+- Runs the same temporary-session prompt against each listed agent
+- Runs agents serially in the requested workspace
+- Reuses the global `exec` controls: cwd, timeout, permissions, `--policy`, auth, terminal, retries, model/system options, and output format
+- `--format text` prints one summary table row per agent
+- `--format json` or `--json` prints `CompareRow[]`
+- `--format quiet` prints `<agent>\t<status>` per row
+- Does not create saved sessions or separate compare transcript directories
 
 ### Cancel / Mode / Config / Model
 

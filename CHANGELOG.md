@@ -12,6 +12,7 @@ Repo: https://github.com/openclaw/acpx
 - Runtime/embedding: surface cost, token usage breakdowns, and advertised command metadata on runtime status/events. Thanks @DaniAkash.
 - Agents/built-ins: add `fast-agent` as a built-in fast-agent ACP adapter via `uvx fast-agent-mcp acp`.
 - Agents/built-ins: add `mux` as a built-in coder/mux ACP adapter via `npx -y mux@^0.27.0 acp`. Thanks @ThomasK33.
+- CLI: add `acpx compare` to run one prompt across multiple agents and summarize timing, token usage, stop reason, permissions, and final output side by side. Thanks @mvanhorn.
 
 ### Breaking
 

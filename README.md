@@ -40,6 +40,7 @@ One command surface for Pi, OpenClaw ACP, Codex, Claude, and other ACP-compatibl
 - **Structured output**: typed ACP messages (thinking, tool calls, diffs) instead of ANSI scraping
 - **Any ACP agent**: built-in registry + `--agent` escape hatch for custom servers
 - **One-shot mode**: `exec` for stateless fire-and-forget tasks
+- **Compare across agents**: `acpx compare pi openclaw codex 'fix the bug'` runs the same one-shot prompt against multiple ACP-compatible agents and summarizes timing, token usage, permissions, and final output side by side
 - **Experimental flows**: `flow run <file>` for TypeScript workflow modules over multiple prompts
 - **Runtime-owned flow actions**: shell-backed action steps can prepare workspaces and other deterministic mechanics outside the agent turn
 - **Flow workspace isolation**: `acp` nodes can target an explicit per-step cwd, so flows can keep agent work inside disposable worktrees
