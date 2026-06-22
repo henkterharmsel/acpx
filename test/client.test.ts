@@ -893,8 +893,7 @@ test("AcpClient setSessionModel preserves explicitly advertised legacy model con
         ],
       },
     }),
-    extMethod: async (method: string, params: Record<string, unknown>) => {
-      assert.equal(method, "session/set_model");
+    unstable_setSessionModel: async (params: Record<string, unknown>) => {
       capturedLegacyParams = params;
       return {};
     },
