@@ -12,6 +12,8 @@ Repo: https://github.com/openclaw/acpx
 
 ### Fixes
 
+- Runtime/sessions: use collision-resistant temporary paths for concurrent atomic session and index writes. Thanks @henkterharmsel.
+
 ## 2026.7.4 (v0.12.0)
 
 ### Changes
